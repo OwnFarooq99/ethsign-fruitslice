@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EthSign Fruit Slice 🍊</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: linear-gradient(135deg, #ffb347, #ff7a00);
+      font-family: Arial, sans-serif;
+      color: white;
+      text-align: center;
+    }
+    #score {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 24px;
+      font-weight: bold;
+    }
+    #gameCanvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="score">Score: 0</div>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let fruits = [];
+    let score = 0;
+
+    class Fruit {
+      constructor(x, y, speed, size) {
+        this.x = x;
+        this.y = y;
+        this.speed = speed;
+        this.size = size;
+        this.sliced = false;
+      }
+      draw() {
+        ctx.font = this.size + "px Arial";
+        ctx.fillText("🍊", this.x, this.y);
+      }
+      update() {
+        this.y += this.speed;
+        this.draw();
+      }
+    }
+
+    function spawnFruit() {
+      const x = Math.random() * (canvas.width - 50);
+      const size = 40 + Math.random() * 40;
+      const speed = 2 + Math.random() * 3;
+      fruits.push(new Fruit(x, 0, speed, size));
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      fruits.forEach((fruit, index) => {
+        fruit.update();
+        if (fruit.y > canvas.height) fruits.splice(index, 1);
+      });
+      requestAnimationFrame(gameLoop);
+    }
+
+    function sliceFruit(x, y) {
+      fruits.forEach((fruit, index) => {
+        if (
+          x > fruit.x &&
+          x < fruit.x + fruit.size &&
+          y > fruit.y - fruit.size &&
+          y < fruit.y
+        ) {
+          fruits.splice(index, 1);
+          score++;
+          document.getElementById("score").textContent = "Score: " + score;
+        }
+      });
+    }
+
+    canvas.addEventListener("mousemove", (e) => {
+      sliceFruit(e.clientX, e.clientY);
+    });
+
+    canvas.addEventListener("touchmove", (e) => {
+      const touch = e.touches[0];
+      sliceFruit(touch.clientX, touch.clientY);
+    });
+
+    setInterval(spawnFruit, 1000);
+    gameLoop();
+  </script>
+</body>
+</html>
