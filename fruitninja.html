@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>EthSign Fruit Slice — 🍊</title>
+<style>
+  :root{
+    --bg1:#ffd67a; --bg2:#ff914d; --panel:#1a1a1a; --accent:#ff7a00; --text:#111;
+  }
+  html,body{height:100%;margin:0;}
+  body{
+    font-family: Inter, system-ui, Arial, sans-serif;
+    background: linear-gradient(160deg,var(--bg1),var(--bg2));
+    display:flex; align-items:center; justify-content:center; padding:12px;
+    color:var(--text);
+  }
+
+  .wrap{
+    width:100%;
+    max-width:900px;
+    height:calc(100vh - 40px);
+    max-height:900px;
+    display:grid;
+    grid-template-rows: auto 1fr auto;
+    gap:10px;
+  }
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+  }
+  .title{
+    display:flex; align-items:center; gap:10px; font-weight:700;
+    color:#cc4d00;
+  }
+  .ui {
+    display:flex; gap:8px; align-items:center;
+  }
+  .score {
+    background:rgba(255,255,255,0.12); padding:8px 12px; border-radius:12px;
+    font-weight:700;
+  }
+  .lives { display:flex; gap:6px; align-items:center; }
+
+  button {
+    background:var(--accent); border:none; color:#fff; padding:8px 12px;
+    border-radius:10px; font-weight:700; cursor:pointer;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+  }
+
+  .game-area {
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.02));
+    border-radius:14px; overflow:hidden; position:relative;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  canvas{ display:block; width:100%; height:100%; touch-action:none; }
+
+  .footer{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    color:rgba(0,0,0,0.7); font-size:13px;
+  }
+
+  /* small helpful overlays */
+  .overlay {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    pointer-events:none; font-weight:800; color:rgba(0,0,0,0.45);
+  }
+  .center-panel{
+    pointer-events:auto;
+    background: linear-gradient(180deg,#fff, #fff0);
+    padding:18px; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.2);
+    text-align:center; color:var(--text); min-width:240px;
+  }
+  .center-panel h2{ margin:0 0 8px 0; color:var(--accent); }
+  .hint{ font-size:13px; opacity:0.9; margin-top:6px; }
+
+  /* trail visuals (css fallback) */
+  .trail-dot{
+    position:absolute; width:18px; height:18px; border-radius:50%;
+    background:rgba(255,255,255,0.5); pointer-events:none; transform:translate(-50%,-50%);
+    mix-blend-mode:screen;
+  }
+
+  @media (max-width:520px){
+    .wrap{ height:calc(100vh - 24px); }
+    .center-panel{ min-width:200px; padding:14px; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <div style="font-size:20px">🍊</div>
+        <div>
+          <div style="font-size:15px">EthSign Fruit Slice</div>
+          <div style="font-size:11px;opacity:0.8">Swipe to slice — $SIGN vibes</div>
+        </div>
+      </div>
+
+      <div class="ui">
+        <div class="score" id="score">Score: 0</div>
+        <div class="lives" id="lives"></div>
+        <button id="startBtn">Start</button>
+      </div>
+    </div>
+
+    <div class="game-area" id="gameArea">
+      <canvas id="gameCanvas"></canvas>
+      <div class="overlay" id="overlay" style="display:none;">
+        <div class="center-panel" id="centerPanel">
+          <h2>Swipe to Slice 🍊</h2>
+          <div id="overlayText">Slice the oranges. Don't miss 3!</div>
+          <div style="margin-top:12px">
+            <button id="overlayStart">Play</button>
+          </div>
+          <div class="hint">Tip: Slice fast swipes for combos</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>Made for @ethsign · Orange vibes</div>
+      <div><button id="restartBtn" style="background:#fff;color:var(--accent);">Restart</button></div>
+    </div>
+  </div>
+
+<script>
+/* --------- Basic engine & controls --------- */
+
+const canvas = document.getElementById('gameCanvas');
+const gameArea = document.getElementById('gameArea');
+const scoreEl = document.getElementById('score');
+const livesEl = document.getElementById('lives');
+const startBtn = document.getElementById('startBtn');
+const overlay = document.getElementById('overlay');
+const overlayStart = document.getElementById('overlayStart');
+const restartBtn = document.getElementById('restartBtn');
+
+let ctx, DPR;
+function resize() {
+  DPR = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(gameArea.clientWidth * DPR);
+  canvas.height = Math.floor(gameArea.clientHeight * DPR);
+  canvas.style.width = gameArea.clientWidth + 'px';
+  canvas.style.height = gameArea.clientHeight + 'px';
+  ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* Game state */
+let running = false;
+let fruits = [];
+let particles = [];
+let score = 0;
+let lives = 3;
+let spawnTimer = 0;
+let spawnInterval = 700; // ms
+let lastTime = 0;
+
+/* Pointer trail */
+let pointerDown = false;
+let pointerPrev = null;
+let pointerTrail = []; // recent points {x,y,t}
+
+/* Utility */
+const rand = (a,b) => a + Math.random()*(b-a);
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+
+/* Fruit factory */
+function spawnFruit(){
+  // Properties: x,y,vx,vy, radius, type ('normal'|'long'), rotation, sliced
+  const w = gameArea.clientWidth;
+  const type = Math.random() < 0.28 ? 'long' : 'normal'; // sometimes long
+  const radius = type==='normal' ? rand(24,42) : rand(18,28); // normal bigger
+  const x = rand(radius, w - radius);
+  const y = gameArea.clientHeight + radius + 10;
+  const vx = rand(-3,3);
+  const vy = rand(-13, -18); // upward
+  const rot = rand(-1,1);
+  const spin = rand(-0.06,0.06);
+  fruits.push({
+    x, y, vx, vy, rot, spin, radius, type, sliced:false, born:performance.now()
+  });
+}
+
+/* Particles for slice pop */
+function makeParticles(x,y,color,count=14){
+  for(let i=0;i<count;i++){
+    const ang = rand(0, Math.PI*2);
+    const sp = rand(1,6);
+    particles.push({
+      x, y,
+      vx: Math.cos(ang)*sp,
+      vy: Math.sin(ang)*sp,
+      life: rand(400,1000),
+      born: performance.now(),
+      color
+    });
+  }
+}
+
+/* check if segment (x1,y1)->(x2,y2) intersects circle (cx,cy,r) */
+function segIntersectsCircle(x1,y1,x2,y2,cx,cy,r){
+  // distance from center to segment
+  const dx = x2-x1, dy = y2-y1;
+  const l2 = dx*dx + dy*dy;
+  if(l2 === 0){
+    const d = Math.hypot(cx-x1, cy-y1);
+    return d <= r;
+  }
+  let t = ((cx-x1)*dx + (cy-y1)*dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const px = x1 + t*dx, py = y1 + t*dy;
+  const dist = Math.hypot(cx-px, cy-py);
+  return dist <= r;
+}
+
+/* draw an orange fruit - normal or long */
+function drawFruit(f){
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.rotate(f.rot);
+  if(f.type === 'normal'){
+    // orange circle with emoji
+    const r = f.radius;
+    // gradient fill
+    const g = ctx.createLinearGradient(-r,-r,r,r);
+    g.addColorStop(0,'#ffb84d');
+    g.addColorStop(1,'#ff8a00');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0,0,r,0,Math.PI*2);
+    ctx.fill();
+    // little shine
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(-r*0.35, -r*0.45, r*0.22, r*0.12, 0, 0, Math.PI*2);
+    ctx.fill();
+    // emoji in center
+    ctx.font = `${Math.round(r*1.1)}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000';
+    ctx.fillText('🍊', 0, 0 + (r*0.03));
+  } else {
+    // long fruit: draw ellipse (horizontal) and overlay emoji chain
+    const rx = f.radius*1.9; // longer
+    const ry = f.radius*0.9;
+    const g = ctx.createLinearGradient(-rx,-ry,rx,ry);
+    g.addColorStop(0,'#ffd08a');
+    g.addColorStop(1,'#ff8a00');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(0,0,rx,ry, 0, 0, Math.PI*2);
+    ctx.fill();
+    // light
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(-rx*0.4, -ry*0.35, rx*0.28, ry*0.16, 0, 0, Math.PI*2);
+    ctx.fill();
+    // draw a row of small emojis to make it look long
+    ctx.font = `${Math.round(ry*1.0)}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // draw 3 small emojis across
+    const count = 3;
+    for(let i=0;i<count;i++){
+      const px = ((i/(count-1))-0.5) * (rx*1.4);
+      ctx.fillText('🍊', px, 0 + (ry*0.05));
+    }
+  }
+  ctx.restore();
+}
+
+/* update / physics */
+function update(dt){
+  // spawn
+  spawnTimer += dt;
+  if(spawnTimer > spawnInterval){
+    spawnTimer = 0;
+    spawnFruit();
+    // slowly increase difficulty
+    spawnInterval = clamp(700 - Math.floor(score/6)*30, 360, 900);
+  }
+
+  // update fruits
+  for(let i=fruits.length-1;i>=0;i--){
+    const f = fruits[i];
+    // gravity
+    f.vy += 0.5; // gravity
+    f.x += f.vx;
+    f.y += f.vy;
+    f.rot += f.spin;
+    // if fruit fell past bottom unsliced -> miss
+    if(f.y - (f.radius*1.8) > gameArea.clientHeight && !f.sliced){
+      // remove fruit and count miss
+      fruits.splice(i,1);
+      lives--;
+      updateLives();
+      if(lives <= 0){ endGame(); return; }
+    } else if(f.y - (f.radius*1.8) > gameArea.clientHeight && f.sliced){
+      // already sliced and gone -> remove quietly
+      fruits.splice(i,1);
+    } else if(f.sliced && performance.now() - f.slicedAt > 700){
+      // remove sliced fruit after animation time
+      fruits.splice(i,1);
+    }
+  }
+
+  // update particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    const age = performance.now() - p.born;
+    if(age > p.life) { particles.splice(i,1); continue; }
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.12; // gravity on particles
+  }
+}
+
+/* draw frame */
+function draw(){
+  // clear
+  ctx.clearRect(0,0,canvas.width/DPR,canvas.height/DPR);
+
+  // draw fruits
+  for(const f of fruits){
+    if(!f.sliced) drawFruit(f);
+    else {
+      // sliced: show small particles (fruit halves simplified)
+      // draw two half-ellipses moving apart
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - (performance.now() - f.slicedAt)/700);
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.rot);
+      // left half
+      ctx.beginPath();
+      const rx = f.type==='normal' ? f.radius : f.radius*1.9;
+      const ry = f.type==='normal' ? f.radius : f.radius*0.9;
+      // left
+      ctx.fillStyle = '#ff9b3c';
+      ctx.ellipse(-10 - (performance.now() - f.slicedAt)/6, 0, rx*0.6, ry*0.9, 0, Math.PI*0.5, -Math.PI*0.5);
+      ctx.fill();
+      // right
+      ctx.beginPath();
+      ctx.ellipse(10 + (performance.now() - f.slicedAt)/6, 0, rx*0.6, ry*0.9, 0, -Math.PI*0.5, Math.PI*0.5);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // draw particles
+  for(const p of particles){
+    const age = performance.now() - p.born;
+    const alpha = 1 - (age / p.life);
+    ctx.fillStyle = `rgba(255,${140},${40},${alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3 + (1-alpha)*3, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // draw pointer trail
+  if(pointerTrail.length){
+    ctx.save();
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath();
+    for(let i=0;i<pointerTrail.length;i++){
+      const p = pointerTrail[i];
+      if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/* handle slicing detection */
+function handleSliceSegment(x1,y1,x2,y2){
+  // check each fruit for intersection
+  for(const f of fruits){
+    if(f.sliced) continue;
+    const hit = segIntersectsCircle(x1,y1,x2,y2,f.x,f.y, f.type==='normal' ? f.radius*0.9 : f.radius*1.0);
+    if(hit){
+      f.sliced = true;
+      f.slicedAt = performance.now();
+      score += 1;
+      scoreEl.textContent = 'Score: ' + score;
+      // create particles at fruit center
+      makeParticles(f.x, f.y, '#ff7a00', 16);
+      // small combo: sometimes spawn extra fruit
+      if(Math.random() < 0.08) spawnFruit();
+    }
+  }
+}
+
+/* pointer events (unified pointer API) */
+function pointerDownHandler(e){
+  pointerDown = true;
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX !== undefined ? e.clientX : e.touches[0].clientX) - rect.left;
+  const y = (e.clientY !== undefined ? e.clientY : e.touches[0].clientY) - rect.top;
+  pointerPrev = {x,y,t:performance.now()};
+  pointerTrail = [{x,y,t:performance.now()}];
+}
+function pointerMoveHandler(e){
+  if(!pointerDown) return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX !== undefined ? e.clientX : e.touches[0].clientX) - rect.left;
+  const y = (e.clientY !== undefined ? e.clientY : e.touches[0].clientY) - rect.top;
+  const now = performance.now();
+  // add to trail
+  pointerTrail.push({x,y,t:now});
+  // keep last 10 points
+  if(pointerTrail.length > 12) pointerTrail.shift();
+  // slice detection: test last segment
+  if(pointerPrev){
+    handleSliceSegment(pointerPrev.x, pointerPrev.y, x, y);
+  }
+  pointerPrev = {x,y,t:now};
+}
+function pointerUpHandler(e){
+  pointerDown = false;
+  pointerPrev = null;
+  // fade out trail
+  pointerTrail = [];
+}
+
+/* attach events for both mouse and touch */
+canvas.addEventListener('pointerdown', (e)=>{ pointerDownHandler(e); });
+window.addEventListener('pointermove', (e)=>{ pointerMoveHandler(e); });
+window.addEventListener('pointerup', (e)=>{ pointerUpHandler(e); });
+canvas.addEventListener('touchstart', (e)=>{ /* prevent scroll when touching canvas */ e.preventDefault(); }, {passive:false});
+
+/* UI helpers */
+function updateLives(){
+  livesEl.innerHTML = '';
+  for(let i=0;i<3;i++){
+    const dot = document.createElement('div');
+    dot.style.width = '14px';
+    dot.style.height = '14px';
+    dot.style.borderRadius = '50%';
+    dot.style.background = i < lives ? '#ff7a00' : 'rgba(255,255,255,0.3)';
+    livesEl.appendChild(dot);
+  }
+}
+
+/* game control */
+function startGame(){
+  fruits = [];
+  particles = [];
+  score = 0;
+  lives = 3;
+  spawnTimer = 0;
+  spawnInterval = 700;
+  scoreEl.textContent = 'Score: 0';
+  updateLives();
+  lastTime = performance.now();
+  running = true;
+  overlay.style.display = 'none';
+  loop(lastTime);
+}
+function endGame(){
+  running = false;
+  overlay.style.display = 'flex';
+  document.getElementById('centerPanel').innerHTML = `
+    <h2>Game Over</h2>
+    <div style="font-weight:700;margin-top:6px">Score: ${score}</div>
+    <div style="margin-top:12px">
+      <button id="playAgain">Play Again</button>
+    </div>
+  `;
+  document.getElementById('playAgain').addEventListener('click', ()=>{
+    startGame();
+  });
+}
+function restartGame(){
+  startGame();
+}
+
+/* main loop */
+function loop(t){
+  if(!running) return;
+  const dt = t - lastTime;
+  lastTime = t;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* set initial UI */
+updateLives();
+overlay.style.display = 'flex';
+document.getElementById('overlayText').textContent = 'Slice the oranges. Miss 3 and it\'s over!';
+startBtn.addEventListener('click', ()=>{ startGame(); });
+overlayStart.addEventListener('click', ()=>{ startGame(); });
+restartBtn.addEventListener('click', ()=>{ restartGame(); });
+
+/* Small accessibility: start when tapping overlay center */
+document.getElementById('centerPanel').addEventListener('click', (e)=>{ if(e.target.id !== 'overlayStart'){} });
+
+/* tune canvas initial size (call again to ensure crisp) */
+setTimeout(resize, 120);
+
+</script>
+</body>
+  </html>
