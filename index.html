@@ -1,169 +1,119 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EthSign Fruit Slice 🍊</title>
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background: radial-gradient(circle at center, #ffb347, #ff7a00);
-      font-family: Arial, sans-serif;
-      color: white;
-      text-align: center;
-    }
-    #gameCanvas {
-      display: block;
-      margin: auto;
-      background: rgba(0, 0, 0, 0.2);
-    }
-    #score {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      font-size: 1.5rem;
-      font-weight: bold;
-    }
-  </style>
-</head>
-<body>
-  <div id="score">Score: 0</div>
-  <canvas id="gameCanvas" width="400" height="600"></canvas>
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-  <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
-    const scoreEl = document.getElementById("score");
+let fruits = [];
+let splashes = [];
+let score = 0;
 
-    let fruits = [];
-    let splashes = [];
-    let score = 0;
+// Fruit object
+class Fruit {
+  constructor(x, y, size, speedX, speedY) {
+    this.x = x;
+    this.y = y;
+    this.size = size;
+    this.speedX = speedX;
+    this.speedY = speedY;
+    this.color = "orange";
+  }
 
-    class Fruit {
-      constructor(x, y, radius, velocityX, velocityY) {
-        this.x = x;
-        this.y = y;
-        this.radius = radius;
-        this.vx = velocityX;
-        this.vy = velocityY;
-        this.marked = false;
+  draw() {
+    ctx.beginPath();
+    ctx.fillStyle = this.color;
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.closePath();
+  }
+
+  update() {
+    this.x += this.speedX;
+    this.y += this.speedY;
+    this.speedY += 0.25; // gravity
+    this.draw();
+  }
+}
+
+// Splash particle object
+class Splash {
+  constructor(x, y, color) {
+    this.x = x;
+    this.y = y;
+    this.radius = Math.random() * 15 + 8; // bigger splashes
+    this.speedX = (Math.random() - 0.5) * 10;
+    this.speedY = (Math.random() - 0.5) * 10;
+    this.color = color;
+    this.alpha = 1;
+  }
+
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  update() {
+    this.x += this.speedX;
+    this.y += this.speedY;
+    this.alpha -= 0.02; // slower fade
+    this.radius *= 0.95; // smooth shrink
+    this.draw();
+  }
+}
+
+// Add fruits
+function addFruit() {
+  let x = Math.random() * canvas.width;
+  let y = canvas.height + 50;
+  let size = Math.random() * 30 + 20;
+  let speedX = (Math.random() - 0.5) * 6;
+  let speedY = -(Math.random() * 15 + 12);
+  fruits.push(new Fruit(x, y, size, speedX, speedY));
+}
+
+// Game loop
+function animate() {
+  ctx.fillStyle = "rgba(255, 200, 100, 0.2)"; // orange fade bg
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  fruits.forEach((fruit, i) => {
+    fruit.update();
+    if (fruit.y > canvas.height + fruit.size) {
+      fruits.splice(i, 1);
+    }
+  });
+
+  splashes.forEach((splash, i) => {
+    splash.update();
+    if (splash.alpha <= 0) splashes.splice(i, 1);
+  });
+
+  ctx.fillStyle = "white";
+  ctx.font = "24px Arial";
+  ctx.fillText("Score: " + score, 20, 40);
+
+  requestAnimationFrame(animate);
+}
+
+// Slice action
+canvas.addEventListener("mousemove", (e) => {
+  fruits.forEach((fruit, i) => {
+    const dist = Math.hypot(e.offsetX - fruit.x, e.offsetY - fruit.y);
+    if (dist < fruit.size) {
+      for (let j = 0; j < 20; j++) {
+        splashes.push(new Splash(fruit.x, fruit.y, "orange"));
       }
-      update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.vy += 0.2; // gravity
-        if (this.y > canvas.height + this.radius) {
-          this.marked = true;
-        }
-      }
-      draw() {
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "orange";
-        ctx.fill();
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "#ff7a00";
-        ctx.stroke();
-      }
+      fruits.splice(i, 1);
+      score++;
     }
+  });
+});
 
-    class Splash {
-      constructor(x, y, color) {
-        this.particles = [];
-        for (let i = 0; i < 12; i++) {
-          this.particles.push({
-            x: x,
-            y: y,
-            radius: Math.random() * 4 + 2,
-            vx: (Math.random() - 0.5) * 6,
-            vy: (Math.random() - 0.5) * 6,
-            alpha: 1
-          });
-        }
-        this.color = color;
-      }
-      update() {
-        this.particles.forEach(p => {
-          p.x += p.vx;
-          p.y += p.vy;
-          p.vy += 0.1;
-          p.alpha -= 0.02;
-        });
-        this.particles = this.particles.filter(p => p.alpha > 0);
-      }
-      draw() {
-        this.particles.forEach(p => {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255,165,0,${p.alpha})`;
-          ctx.fill();
-        });
-      }
-    }
-
-    function spawnFruit() {
-      const x = Math.random() * (canvas.width - 60) + 30;
-      const y = canvas.height + 30;
-      const radius = Math.random() * 20 + 20;
-      const vx = (Math.random() - 0.5) * 4;
-      const vy = - (Math.random() * 7 + 10);
-      fruits.push(new Fruit(x, y, radius, vx, vy));
-    }
-
-    let slicing = false;
-    let mouseX = 0, mouseY = 0;
-
-    canvas.addEventListener("mousedown", e => {
-      slicing = true;
-      mouseX = e.offsetX;
-      mouseY = e.offsetY;
-    });
-    canvas.addEventListener("mousemove", e => {
-      if (slicing) {
-        mouseX = e.offsetX;
-        mouseY = e.offsetY;
-        checkSlice(mouseX, mouseY);
-      }
-    });
-    canvas.addEventListener("mouseup", () => slicing = false);
-
-    function checkSlice(x, y) {
-      fruits.forEach(fruit => {
-        const dx = fruit.x - x;
-        const dy = fruit.y - y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < fruit.radius && !fruit.marked) {
-          fruit.marked = true;
-          score++;
-          scoreEl.textContent = "Score: " + score;
-          splashes.push(new Splash(fruit.x, fruit.y, "orange"));
-        }
-      });
-    }
-
-    function update() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Fruits
-      fruits.forEach(fruit => {
-        fruit.update();
-        fruit.draw();
-      });
-      fruits = fruits.filter(f => !f.marked);
-
-      // Splashes
-      splashes.forEach(s => {
-        s.update();
-        s.draw();
-      });
-      splashes = splashes.filter(s => s.particles.length > 0);
-
-      requestAnimationFrame(update);
-    }
-
-    setInterval(spawnFruit, 1200);
-    update();
-  </script>
-</body>
-</html>
+setInterval(addFruit, 1000);
+animate();
+        </script>
